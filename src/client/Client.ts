@@ -28,12 +28,14 @@ function getUri(path: string) {
 export class Client {
   private _socket: Socket;
   private _files: Map<string, ClientFileState> = new Map<string, ClientFileState>();
+  private _syncSelection: () => void;
 
-  constructor(socket: Socket) {
+  constructor(socket: Socket, syncSelection: () => void) {
     this._socket = socket;
+    this._syncSelection = syncSelection;
   }
 
-  private onFile = (file: FileMessage): void => {
+  private _onFile = (file: FileMessage): void => {
     let newFile: boolean;
     if (!this._files.has(file.path)) {
       newFile = true;
@@ -65,6 +67,7 @@ export class Client {
           .applyEdit(edit)
           .then(() => {
             console.log('Text replaced.');
+            this._syncSelection();
           }, (error) => {
             console.error(error);
           });
@@ -106,6 +109,7 @@ export class Client {
                   edit(i + 1);
                 } else {
                   state.update(update.ref);
+                  this._syncSelection();
                 }
               }, (error) => {
                 console.error(error);
@@ -128,7 +132,7 @@ export class Client {
       socket.emit('get_files');
       socket.emit('sync_console');
     });
-    socket.on('file', this.onFile);
+    socket.on('file', this._onFile);
     socket.on('change', this._onChange);
   }
 

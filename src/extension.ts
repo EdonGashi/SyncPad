@@ -7,13 +7,23 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 const throttle = require('lodash.throttle');
 
+const lineDecoration = vscode.window.createTextEditorDecorationType({
+  borderWidth: '1px 0',
+  isWholeLine: true,
+  borderColor: new vscode.ThemeColor('focusBorder'),
+  rangeBehavior: vscode.DecorationRangeBehavior.OpenOpen,
+  borderStyle: 'solid',
+  overviewRulerColor: new vscode.ThemeColor('focusBorder'),
+  overviewRulerLane: vscode.OverviewRulerLane.Full,
+});
+
 class ServerManager {
-  private _disposable: vscode.Disposable | null = null;
+  private _disposables: vscode.Disposable[] | null = null;
   private _server: Server | null = null;
   private _virtualConsole: any[] = [];
   private _dumpedItems: any[] = [];
 
-  private _syncImmediate: () => void = () => {
+  private _syncConsoleImmediate: () => void = () => {
     if (this._server) {
       if (this._virtualConsole.length === 0) {
         this._server.io.emit('clear');
@@ -26,7 +36,7 @@ class ServerManager {
     }
   }
 
-  private _sync: () => void;
+  private _syncConsole: () => void;
 
   private _onChange = (e: vscode.TextDocumentChangeEvent) => {
     if (this._server) {
@@ -34,8 +44,36 @@ class ServerManager {
     }
   }
 
+  private _syncSelectionImmediate: () => void = () => {
+    if (this._server) {
+      this._server.io.emit('selection', {
+        path: this._selectionPath,
+        line: this._selectionLine
+      });
+    }
+  }
+
+  private _syncSelection: () => void;
+
+  private _onSelection = (e: vscode.TextEditorSelectionChangeEvent) => {
+    const document = e.textEditor.document;
+    if (document.uri.scheme === 'file') {
+      this._selectionPath = document.uri.path;
+      this._selectionLine = e.selections[0].active.line;
+    } else {
+      this._selectionPath = null;
+      this._selectionLine = null;
+    }
+
+    this._syncSelection();
+  }
+
+  private _selectionPath: string | null = null;
+  private _selectionLine: number | null = null;
+
   constructor() {
-    this._sync = this._syncImmediate;
+    this._syncConsole = this._syncConsoleImmediate;
+    this._syncSelection = this._syncSelectionImmediate;
   }
 
   get started() {
@@ -48,13 +86,18 @@ class ServerManager {
       return false;
     }
 
+    this._selectionLine = null;
+    this._selectionPath = null;
     if (typeof wait === 'number') {
-      this._sync = throttle(this._syncImmediate, wait, {
+      this._syncConsole = throttle(this._syncConsoleImmediate, wait, {
         leading: false,
         trailing: true
-      }) as () => void;
+      });
+
+      this._syncSelection = throttle(this._syncSelectionImmediate, wait);
     } else {
-      this._sync = this._syncImmediate;
+      this._syncConsole = this._syncConsoleImmediate;
+      this._syncSelection = this._syncSelectionImmediate;
     }
 
     console.log(`Trying to start server in port ${port}`);
@@ -64,8 +107,11 @@ class ServerManager {
       cookie: false
     });
 
-    if (this._disposable === null) {
-      this._disposable = vscode.workspace.onDidChangeTextDocument(this._onChange);
+    if (this._disposables === null) {
+      this._disposables = [
+        vscode.workspace.onDidChangeTextDocument(this._onChange),
+        vscode.window.onDidChangeTextEditorSelection(this._onSelection)
+      ];
     }
 
     const server = new Server(io, () => this._virtualConsole, wait);
@@ -98,14 +144,14 @@ class ServerManager {
     if (this._virtualConsole.length <= 100) {
       this._virtualConsole.push(data);
       this._dumpedItems.push(data);
-      this._sync();
+      this._syncConsole();
     }
   }
 
   onClear() {
     this._virtualConsole = [];
     this._dumpedItems = [];
-    this._sync();
+    this._syncConsole();
   }
 
   onShowWindow() {
@@ -122,9 +168,9 @@ class ServerManager {
       retval = true;
     }
 
-    if (this._disposable) {
-      this._disposable.dispose();
-      this._disposable = null;
+    if (this._disposables) {
+      this._disposables.forEach(d => d.dispose());
+      this._disposables = null;
     }
 
     return retval;
@@ -133,9 +179,29 @@ class ServerManager {
 
 class ClientManager {
   private client: Client | null = null;
+  private _disposables: vscode.Disposable[] | null = null;
+  private _selectionPath: string | null = null;
+  private _selectionLine: number | null = null;
 
   get started() {
     return this.client !== null;
+  }
+
+  private _updateLine(editor?: vscode.TextEditor) {
+    if (!editor) {
+      return;
+    }
+
+    const ranges: vscode.Range[] = [];
+    if (this._selectionLine !== null && this._selectionPath && editor.document) {
+      const uri = editor.document.uri;
+      if (uri.scheme === scheme && uri.path === this._selectionPath) {
+        const position = new vscode.Position(this._selectionLine, 0);
+        ranges.push(new vscode.Range(position, position));
+      }
+    }
+
+    editor.setDecorations(lineDecoration, ranges);
   }
 
   start(host: string, logger: Logger | null): boolean {
@@ -143,6 +209,8 @@ class ClientManager {
       return false;
     }
 
+    this._selectionLine = null;
+    this._selectionPath = null;
     const io = require('socket.io-client');
     const socket = io(host, {
       reconnectionAttempts: 3
@@ -160,6 +228,12 @@ class ClientManager {
           }
         });
     };
+
+    if (!this._disposables) {
+      this._disposables = [
+        vscode.window.onDidChangeActiveTextEditor(this._updateLine)
+      ];
+    }
 
     socket.on('disconnect', (reason: string) => {
       this.dispose();
@@ -205,7 +279,7 @@ class ClientManager {
       }
     });
 
-    socket.on('sync', (items?: any[]) => {
+    socket.on('sync_console', (items?: any[]) => {
       if (logger) {
         logger.clear(false);
         if (items) {
@@ -223,7 +297,13 @@ class ClientManager {
       }
     });
 
-    const client = new Client(socket);
+    socket.on('selection', (position: { path: string | null, line: number | null, }) => {
+      this._selectionPath = position.path;
+      this._selectionLine = position.line;
+      this._updateLine(vscode.window.activeTextEditor);
+    });
+
+    const client = new Client(socket, () => this._updateLine(vscode.window.activeTextEditor));
     client.connect();
     this.client = client;
     return true;
@@ -243,6 +323,11 @@ class ClientManager {
     if (this.client) {
       this.client.dispose();
       this.client = null;
+    }
+
+    if (this._disposables) {
+      this._disposables.forEach(d => d.dispose());
+      this._disposables = null;
     }
   }
 }
@@ -373,6 +458,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(
+    lineDecoration,
     shareFile,
     stopSharing,
     joinSession,

@@ -51,7 +51,7 @@ export class Server {
     });
 
     socket.on('sync_console', () => {
-      socket.emit('sync', this._virtualConsole());
+      socket.emit('sync_console', this._virtualConsole());
     });
   }
 
