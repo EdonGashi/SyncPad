@@ -1,0 +1,64 @@
+{
+    "name": "syncpad",
+    "displayName": "SyncPad",
+    "description": "Share vscode documents in realtime",
+    "version": "0.0.1",
+    "publisher": "EdonGashi",
+    "engines": {
+        "vscode": "^1.17.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "onCommand:syncpad.shareFile",
+        "onCommand:syncpad.stopSharing",
+        "onCommand:syncpad.joinSession",
+        "onCommand:syncpad.openFiles",
+        "onCommand:syncpad.disconnect"
+    ],
+    "main": "./out/extension",
+    "contributes": {
+        "commands": [
+            {
+                "command": "syncpad.shareFile",
+                "title": "SyncPad: Share Current File"
+            },
+            {
+                "command": "syncpad.stopSharing",
+                "title": "SyncPad: Stop Sharing"
+            },
+            {
+                "command": "syncpad.joinSession",
+                "title": "SyncPad: Join Session"
+            },
+            {
+                "command": "syncpad.openFiles",
+                "title": "SyncPad: Open All Session Files"
+            },
+            {
+                "command": "syncpad.disconnect",
+                "title": "SyncPad: Disconnect"
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "postinstall": "node ./node_modules/vscode/bin/install",
+        "test": "npm run compile && node ./node_modules/vscode/bin/test"
+    },
+    "devDependencies": {
+        "@types/mocha": "^2.2.42",
+        "@types/node": "^7.0.43",
+        "tslint": "^5.8.0",
+        "typescript": "^2.6.1",
+        "vscode": "^1.1.10"
+    },
+    "dependencies": {
+        "lodash.throttle": "^4.1.1",
+        "socket.io": "^2.0.4",
+        "socket.io-client": "^2.0.4"
+    }
+}
