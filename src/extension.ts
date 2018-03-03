@@ -28,7 +28,7 @@ class ServerManager {
       if (this._virtualConsole.length === 0) {
         this._server.io.emit('clear');
       } else if (this._dumpedItems.length === this._virtualConsole.length) {
-        this._server.io.emit('sync', this._virtualConsole);
+        this._server.io.emit('sync_console', this._virtualConsole);
       } else {
         this._server.io.emit('dump', this._dumpedItems);
         this._dumpedItems = [];
@@ -209,6 +209,12 @@ class ClientManager {
       return false;
     }
 
+    let hostWithoutPort = host;
+    const index = hostWithoutPort.indexOf(':');
+    if (index !== -1) {
+      hostWithoutPort = host.substring(0, index);
+    }
+
     this._selectionLine = null;
     this._selectionPath = null;
     const io = require('socket.io-client');
@@ -246,7 +252,7 @@ class ClientManager {
     function formatDumpData(item: any) {
       const value = item.$value;
       if (value && value.$type === 'html' && typeof value.$html === 'string') {
-        value.$html = (value.$html as string).replace(/http?\:\/\/localhost/g, host);
+        value.$html = (value.$html as string).replace(/http?\:\/\/localhost/g, hostWithoutPort);
       }
     }
 
@@ -354,7 +360,7 @@ interface Logger {
 
 export default class Config {
   constructor(config: vscode.WorkspaceConfiguration) {
-    this.listenServerPort = config.get<number>("listenServerPort") || 80;
+    this.listenServerPort = config.get<number>("listenServerPort") || 5257;
   }
 
   listenServerPort: number;
@@ -436,6 +442,10 @@ export function activate(context: vscode.ExtensionContext) {
         if (input) {
           if (!input.startsWith('http://')) {
             input = 'http://' + input;
+          }
+
+          if (!input.match(/\:\d+$/)) {
+            input = input + ':' + port;
           }
 
           if (sharpPad && (sharpPad as Thenable<Logger>).then) {
