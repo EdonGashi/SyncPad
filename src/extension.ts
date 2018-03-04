@@ -5,25 +5,6 @@ import { Client } from './client/Client';
 import { Server } from './server/Server';
 import * as path from 'path';
 import { EventEmitter } from 'events';
-import * as dns from 'dns';
-const isIp = require('is-ip');
-
-export function resolveAddress(hostname?: string): Thenable<string | undefined> {
-  if (!hostname || hostname.startsWith('http://') || isIp(hostname)) {
-    return Promise.resolve(hostname);
-  }
-
-  return new Promise((resolve) => {
-    dns.lookup(hostname, (err, address) => {
-      if (err) {
-        return resolve(hostname);
-      }
-
-      return resolve(address);
-    });
-  });
-}
-
 const throttle = require('lodash.throttle');
 
 const lineDecoration = vscode.window.createTextEditorDecorationType({
@@ -457,7 +438,6 @@ export function activate(context: vscode.ExtensionContext) {
       .showInputBox({
         placeHolder: 'Host address'
       })
-      .then(input => resolveAddress(input))
       .then(input => {
         if (input) {
           if (!input.startsWith('http://')) {
