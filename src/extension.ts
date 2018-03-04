@@ -210,7 +210,7 @@ class ClientManager {
     }
 
     let hostWithoutPort = host;
-    const index = hostWithoutPort.indexOf(':');
+    const index = hostWithoutPort.lastIndexOf(':');
     if (index !== -1) {
       hostWithoutPort = host.substring(0, index);
     }
