@@ -2,4 +2,4 @@
 
 Allows sharing files in real-time.
 
-![SyncPad](https://i.imgur.com/i67s0y6.gif)
+![SyncPad](https://thumbs.gfycat.com/IdolizedAjarBlackfish-size_restricted.gif)
